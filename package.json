@@ -8,14 +8,18 @@
     "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
-    "cdk": "cdk"
+    "build:lambda": "cd src/services/text-file-processor && npm run build",
+    "cdk": "npm run build:lambda && cdk",
+    "cdk:diff": "npm run build:lambda && cdk diff",
+    "cdk:synth": "npm run build:lambda && cdk synth",
+    "cdk:deploy": "npm run build:lambda && cdk deploy"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",
     "@types/node": "22.7.9",
+    "aws-cdk": "2.1014.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.5",
-    "aws-cdk": "2.1014.0",
     "ts-node": "^10.9.2",
     "typescript": "~5.6.3"
   },
