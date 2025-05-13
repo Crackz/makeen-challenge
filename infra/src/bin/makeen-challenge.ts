@@ -1,11 +1,23 @@
 #!/usr/bin/env node
+import "source-map-support/register";
 import * as cdk from "aws-cdk-lib";
-import { MakeenChallengeApp } from "../lib/makeen-challenge-app";
+import { MakeenChallengeApp } from "../app";
 
 const app = new cdk.App();
 
 // Get environment from context or use defaults
 const getEnvFromContext = (app: cdk.App): cdk.Environment => {
+  // Check if we're using LocalStack
+  const useLocal = app.node.tryGetContext("use-local") === true;
+
+  if (useLocal) {
+    console.log("Using LocalStack for deployment");
+    return {
+      account: process.env.CDK_DEFAULT_ACCOUNT || "000000000000",
+      region: process.env.CDK_DEFAULT_REGION || "eu-central-1",
+    };
+  }
+
   const account =
     app.node.tryGetContext("account") ||
     process.env.CDK_DEFAULT_ACCOUNT ||
@@ -24,17 +36,16 @@ const getEnvFromContext = (app: cdk.App): cdk.Environment => {
   return { account, region };
 };
 
-// Get stage from context or default to 'dev'
-const stage = app.node.tryGetContext("stage") || "dev";
+// Determine the stage from environment variable, default to 'dev'
+const stage = process.env.STAGE || "dev"; // Use STAGE env var, default to 'dev'
 
 // Create the application with the specified environment and stage
 new MakeenChallengeApp(app, {
+  // Pass only app and props object
   env: getEnvFromContext(app),
-  stageName: stage,
+  stageName: stage, // Pass stage via stageName prop
 });
 
 // Tag the entire app with common tags
 cdk.Tags.of(app).add("Application", "MakeenChallenge");
 cdk.Tags.of(app).add("ManagedBy", "CDK");
-
-console.log(`Synthesizing MakeenChallenge application for stage: ${stage}`);

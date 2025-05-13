@@ -1,0 +1,75 @@
+version: "3"
+
+# Taskfile for makeen-challenge project
+# Provides tasks for managing Docker Compose, LocalStack, and CDK deployments
+
+includes:
+  infra:
+    taskfile: ./infra/Taskfile.yml
+    dir: ./infra
+  text-file-processor:
+    taskfile: ./apps/text-file-processor/Taskfile.yml
+    dir: ./apps/text-file-processor
+
+tasks:
+  docker:up:
+    desc: Start Docker Compose services
+    cmd: docker-compose up -d
+    silent: true
+
+  docker:down:
+    desc: Down Docker Compose services
+    cmd: docker-compose down -v
+    silent: true
+
+  docker:stop:
+    desc: Stop Docker Compose services
+    cmd: docker-compose stop
+    silent: true
+
+  docker:restart:
+    desc: Restart Docker Compose services
+    cmd: docker-compose restart
+    silent: true
+
+  docker:logs:
+    desc: View LocalStack container logs
+    cmd: docker compose logs -f localstack
+    silent: true
+
+  localstack:wait:
+    desc: Wait for LocalStack to be ready
+    cmds:
+      - |
+        echo "Waiting for LocalStack to be ready..."
+        until curl -s http://localhost:4566/_localstack/health | grep -q '{'; do
+          echo "LocalStack not ready yet, waiting..."
+          sleep 3
+        done
+        echo "LocalStack is ready!"
+    silent: true
+    internal: true
+
+  localstack:deploy:
+    desc: Deploy all resources to LocalStack
+    cmds:
+      - task: docker:up
+      - task: localstack:wait
+      - task: infra:build
+      - task: infra:bootstrap
+      - task: infra:deploy
+    silent: true
+
+  dev:
+    desc: Start development environment with LocalStack
+    cmds:
+      - task: localstack:deploy
+      - echo "Development environment is ready!"
+    silent: true
+
+  destroy:
+    desc: Destroy development environment
+    cmds:
+      - task: infra:destroy
+      - task: docker:down
+    silent: true

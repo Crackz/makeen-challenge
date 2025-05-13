@@ -1,0 +1,7 @@
+{
+  "services": {
+    "lambda": {
+      "mountCode": true
+    }
+  }
+}

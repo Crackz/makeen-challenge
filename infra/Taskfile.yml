@@ -1,0 +1,42 @@
+version: "3"
+env:
+  AWS_ENVAR_ALLOWLIST: AWS_REGION
+  AWS_REGION: eu-central-1
+  LOCALSTACK_ENDPOINT: http://localhost:4566
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  STAGE: dev
+
+tasks:
+  build:
+    desc: Build CDK stacks
+    cmd: npm run build
+    silent: true
+
+  bootstrap:
+    desc: Bootstrap CDK local environment
+    cmd: cdklocal bootstrap
+    silent: true
+
+  destroy:
+    desc: Destroy CDK local environment
+    cmd: cdklocal destroy --all --force
+    silent: true
+
+  synth:
+    desc: Synthesize CDK stacks locally
+    cmd: cdklocal synth
+    silent: true
+
+  diff:
+    desc: Show differences in CDK stacks
+    cmd: cdklocal diff
+    silent: true
+
+  deploy:
+    desc: Deploy CDK stacks to LocalStack
+    cmd: |
+      echo "Deploying CDK stacks to LocalStack..."
+      cdklocal deploy --all --require-approval never
+      echo "Deployment process completed"
+    silent: false

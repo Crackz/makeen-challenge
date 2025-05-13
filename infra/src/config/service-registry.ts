@@ -1,7 +1,11 @@
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as cdk from "aws-cdk-lib";
-import { TableAccessType } from "../lambda-stack";
-import { TABLE_NAMES } from "../database-stack";
+import { TableAccessType } from "../stacks/lambda-stack";
+import { TABLE_NAMES } from "../stacks/database-stack";
+
+export enum ServiceKey {
+  TEXT_FILE_PROCESSOR = "textFileProcessor",
+}
 
 export interface ServiceDefinition {
   name: string;
@@ -24,11 +28,11 @@ export interface ServiceDefinition {
 }
 
 // Registry of all services in the application
-export const SERVICES: Record<string, ServiceDefinition> = {
-  fileProcessor: {
-    name: "FileProcessor",
+export const SERVICES: Record<ServiceKey, ServiceDefinition> = {
+  textFileProcessor: {
+    name: "TextFileProcessor",
     description: "Processes uploaded text files",
-    path: "../src/services/text-file-processor/dist",
+    path: "apps/text-file-processor/dist",
     handler: "main.handler",
     runtime: lambda.Runtime.NODEJS_22_X,
     tableAccess: [
@@ -45,7 +49,6 @@ export const SERVICES: Record<string, ServiceDefinition> = {
       },
     ],
   },
-  // Add more services here as needed
 };
 
 /**
@@ -53,7 +56,7 @@ export const SERVICES: Record<string, ServiceDefinition> = {
  * @param key The service key in the registry
  * @returns The service definition
  */
-export function getService(key: string): ServiceDefinition {
+export function getService(key: ServiceKey): ServiceDefinition {
   if (!SERVICES[key]) {
     throw new Error(`Unknown service: ${key}`);
   }
@@ -65,6 +68,6 @@ export function getService(key: string): ServiceDefinition {
  * Get all services in the registry
  * @returns All service definitions
  */
-export function getAllServices(): Record<string, ServiceDefinition> {
+export function getAllServices(): Record<ServiceKey, ServiceDefinition> {
   return { ...SERVICES };
 }

@@ -1,11 +1,15 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
-import { DatabaseStack } from "../database-stack";
-import { LambdaStack } from "../lambda-stack";
-import { ApiStack, ApiEndpointConfig } from "../api-stack";
-import { MonitoringStack, MonitoringResourceConfig } from "../monitoring-stack";
+import { DatabaseStack } from "../stacks/database-stack";
+import { LambdaStack } from "../stacks/lambda-stack";
+import { ApiStack, ApiEndpointConfig } from "../stacks/api-stack";
+import { MonitoringStack, MonitoringResourceConfig } from "../stacks/monitoring-stack";
 import { getEnvironmentConfig } from "../config/environment-config";
-import { getService, ServiceDefinition } from "../config/service-registry";
+import {
+  getService,
+  ServiceDefinition,
+  ServiceKey,
+} from "../config/service-registry";
 
 export interface StackFactoryProps {
   app: cdk.App;
@@ -51,6 +55,7 @@ export class StackFactory {
         description: `Makeen Challenge Database Stack - ${this.stageName}`,
         stackName: `${this.stackNamePrefix}-${stackId}`,
         terminationProtection: this.envConfig.terminationProtection,
+        stageName: this.stageName,
       }
     );
 
@@ -65,8 +70,9 @@ export class StackFactory {
    * @returns The created Lambda stack
    */
   public createLambdaStack(
-    serviceKey: string,
-    dependencies: { databaseStack: DatabaseStack }
+    serviceKey: ServiceKey,
+    dependencies: { databaseStack: DatabaseStack },
+    options?: { tags?: Record<string, string> }
   ): LambdaStack {
     const serviceDefinition = getService(serviceKey);
     const stackId = serviceDefinition.name;
@@ -95,6 +101,7 @@ export class StackFactory {
         tables: dependencies.databaseStack.getTables(),
         service: serviceConfig,
         terminationProtection: this.envConfig.terminationProtection,
+        ...options,
       }
     );
 
@@ -111,7 +118,7 @@ export class StackFactory {
    * @returns The created API stack
    */
   public createApiStack(dependencies: {
-    lambdaStacks: Record<string, LambdaStack>;
+    lambdaStacks: Record<ServiceKey, LambdaStack>;
   }): ApiStack {
     const stackId = "Api";
 
@@ -124,7 +131,7 @@ export class StackFactory {
 
     Object.entries(dependencies.lambdaStacks).forEach(
       ([serviceKey, lambdaStack]) => {
-        const serviceDefinition = getService(serviceKey);
+        const serviceDefinition = getService(serviceKey as ServiceKey);
 
         if (serviceDefinition.apiEndpoints) {
           serviceDefinition.apiEndpoints.forEach((endpoint) => {
@@ -165,7 +172,7 @@ export class StackFactory {
    */
   public createMonitoringStack(dependencies: {
     databaseStack: DatabaseStack;
-    lambdaStacks: Record<string, LambdaStack>;
+    lambdaStacks: Record<ServiceKey, LambdaStack>;
     apiStack: ApiStack;
   }): MonitoringStack {
     const stackId = "Monitoring";
@@ -191,7 +198,7 @@ export class StackFactory {
     // Add Lambda monitoring for each service
     Object.entries(dependencies.lambdaStacks).forEach(
       ([serviceKey, lambdaStack]) => {
-        const serviceDefinition = getService(serviceKey);
+        const serviceDefinition = getService(serviceKey as ServiceKey);
 
         monitoringResources.push({
           type: "lambda",
