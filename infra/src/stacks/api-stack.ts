@@ -15,6 +15,7 @@ interface ApiStackProps extends cdk.StackProps {
   stageName: string;
   apiName?: string;
   description?: string;
+  apiKeyValue?: string;
 }
 
 export class ApiStack extends cdk.Stack {
@@ -38,7 +39,7 @@ export class ApiStack extends cdk.Stack {
       defaultCorsPreflightOptions: {
         allowOrigins: apigateway.Cors.ALL_ORIGINS,
         allowMethods: apigateway.Cors.ALL_METHODS,
-        allowHeaders: ["Content-Type", "X-Amz-Date", "Authorization", "X-Api-Key"],
+        allowHeaders: ["Content-Type", "X-Api-Key"],
         maxAge: cdk.Duration.days(1),
       },
       endpointTypes: [apigateway.EndpointType.REGIONAL], // Use REGIONAL for production
@@ -48,26 +49,29 @@ export class ApiStack extends cdk.Stack {
     // Create resources and methods for each endpoint
     props.endpoints.forEach((endpoint, index) => {
       // Split the resource path into segments and create nested resources
-      const pathSegments = endpoint.resourcePath.split('/');
+      const pathSegments = endpoint.resourcePath.split("/");
       let currentResource = this.api.root;
-      
+
       // Create nested resources based on path segments
-      pathSegments.filter(segment => segment.length > 0).forEach(segment => {
-        const existingResource = currentResource.getResource(segment);
-        if (existingResource) {
-          currentResource = existingResource;
-        } else {
-          currentResource = currentResource.addResource(segment);
-        }
-      });
-      
+      pathSegments
+        .filter((segment) => segment.length > 0)
+        .forEach((segment) => {
+          const existingResource = currentResource.getResource(segment);
+          if (existingResource) {
+            currentResource = existingResource;
+          } else {
+            currentResource = currentResource.addResource(segment);
+          }
+        });
+
       // Add methods to the resource
-      endpoint.methods.forEach(method => {
+      endpoint.methods.forEach((method) => {
         currentResource.addMethod(
           method,
           new apigateway.LambdaIntegration(endpoint.lambdaFunction, {
             contentHandling: apigateway.ContentHandling.CONVERT_TO_TEXT,
-            passthroughBehavior: apigateway.PassthroughBehavior.WHEN_NO_TEMPLATES,
+            passthroughBehavior:
+              apigateway.PassthroughBehavior.WHEN_NO_TEMPLATES,
             timeout: cdk.Duration.seconds(29), // Set integration timeout
           }),
           {
@@ -119,10 +123,11 @@ export class ApiStack extends cdk.Stack {
     // Monitoring has been moved to the dedicated MonitoringStack
 
     // Create API key and usage plan
+    // Create API key with optional fixed value for development environments
     this.apiKey = new apigateway.ApiKey(this, `${props.apiName || "Api"}Key`, {
       enabled: true,
       description: `API Key for ${props.apiName || "API"} service (${props.stageName})`,
-      generateDistinctId: true, // Generate a unique ID for the API key
+      value: props.apiKeyValue, // If provided, use fixed value; otherwise, AWS generates a random one
     });
 
     this.usagePlan = new apigateway.UsagePlan(

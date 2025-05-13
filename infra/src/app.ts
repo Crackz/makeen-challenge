@@ -23,17 +23,9 @@ export class MakeenChallengeApp {
     // Create the database stack
     const databaseStack = stackFactory.createDatabaseStack();
 
-    // Create the file processor Lambda stack
-    const textFileProcessorTags: Record<string, string> = {};
-
-    if (isLocalDev) {
-      textFileProcessorTags._custom_id_ = "text-file-processor";
-    }
-
     const textFileProcessorLambdaStack = stackFactory.createLambdaStack(
       ServiceKey.TEXT_FILE_PROCESSOR,
-      { databaseStack },
-      { tags: textFileProcessorTags }
+      { databaseStack }
     );
 
     // Create Lambda stacks for all services/lambdas
@@ -43,9 +35,14 @@ export class MakeenChallengeApp {
 
     // Create the API stack with all Lambda functions
     const apiStack = stackFactory.createApiStack({ lambdaStacks });
+    if (isLocalDev) {
+      // The _custom_id_ tag is used by localstack to assign static domain for the API Gateway
+      // Note: Adding tags during stack creation does not work with LocalStack. However, the following API does work:
+      cdk.Tags.of(apiStack).add("_custom_id_", "makeen-challenge-api");
+    }
 
     // Create the monitoring stack for all resources
-    const monitoringStack = stackFactory.createMonitoringStack({
+    stackFactory.createMonitoringStack({
       databaseStack,
       lambdaStacks,
       apiStack,

@@ -5,13 +5,13 @@ export type EnvironmentName = "dev" | "staging" | "prod";
 export interface EnvironmentConfig {
   // General settings
   terminationProtection: boolean;
-  
+
   // Database settings
   databaseSettings: {
     pointInTimeRecovery: boolean;
     removalPolicy: cdk.RemovalPolicy;
   };
-  
+
   // Lambda settings
   lambdaSettings: {
     memorySize: number;
@@ -19,14 +19,18 @@ export interface EnvironmentConfig {
     retryAttempts: number;
     logRetentionDays: number;
   };
-  
+
   // API settings
   apiSettings: {
     throttleRateLimit: number;
     throttleBurstLimit: number;
     quotaLimit: number;
+    /**
+     * it should be at least 20 characters
+     */
+    apiKeyValue?: string;
   };
-  
+
   // Monitoring settings
   monitoringSettings: {
     alarmEmailSubscription?: string;
@@ -59,6 +63,7 @@ const environmentConfigs: Record<EnvironmentName, EnvironmentConfig> = {
       throttleRateLimit: 20,
       throttleBurstLimit: 40,
       quotaLimit: 2000,
+      apiKeyValue: "super-secret-dummy-api-key",
     },
     monitoringSettings: {
       alarmThresholds: {
@@ -71,7 +76,7 @@ const environmentConfigs: Record<EnvironmentName, EnvironmentConfig> = {
       },
     },
   },
-  
+
   staging: {
     terminationProtection: false,
     databaseSettings: {
@@ -100,7 +105,7 @@ const environmentConfigs: Record<EnvironmentName, EnvironmentConfig> = {
       },
     },
   },
-  
+
   prod: {
     terminationProtection: true,
     databaseSettings: {
@@ -139,10 +144,10 @@ const environmentConfigs: Record<EnvironmentName, EnvironmentConfig> = {
  */
 export function getEnvironmentConfig(environment: string): EnvironmentConfig {
   const envName = environment as EnvironmentName;
-  
+
   if (!environmentConfigs[envName]) {
     throw new Error(`Unknown environment: ${environment}`);
   }
-  
+
   return environmentConfigs[envName];
 }

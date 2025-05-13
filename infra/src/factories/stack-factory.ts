@@ -3,7 +3,10 @@ import { Construct } from "constructs";
 import { DatabaseStack } from "../stacks/database-stack";
 import { LambdaStack } from "../stacks/lambda-stack";
 import { ApiStack, ApiEndpointConfig } from "../stacks/api-stack";
-import { MonitoringStack, MonitoringResourceConfig } from "../stacks/monitoring-stack";
+import {
+  MonitoringStack,
+  MonitoringResourceConfig,
+} from "../stacks/monitoring-stack";
 import { getEnvironmentConfig } from "../config/environment-config";
 import {
   getService,
@@ -115,15 +118,26 @@ export class StackFactory {
   /**
    * Create an API stack for multiple services
    * @param dependencies Dependencies for this stack
+   * @param options Optional configuration for the stack
    * @returns The created API stack
    */
-  public createApiStack(dependencies: {
-    lambdaStacks: Record<ServiceKey, LambdaStack>;
-  }): ApiStack {
+  public createApiStack(
+    dependencies: {
+      lambdaStacks: Record<ServiceKey, LambdaStack>;
+    },
+    options?: { tags?: Record<string, string> }
+  ): ApiStack {
     const stackId = "Api";
 
     if (this.stacks[stackId]) {
       return this.stacks[stackId] as ApiStack;
+    }
+
+    if (
+      this.envConfig.apiSettings.apiKeyValue &&
+      this.envConfig.apiSettings.apiKeyValue.length < 20
+    ) {
+      throw new Error("API key value should be at least 20 characters long");
     }
 
     // Collect API endpoints from all services
@@ -154,6 +168,9 @@ export class StackFactory {
       apiName: "MakeenChallengeApi",
       stageName: this.stageName,
       terminationProtection: this.envConfig.terminationProtection,
+      // Pass API key value from environment config if available
+      apiKeyValue: this.envConfig.apiSettings.apiKeyValue,
+      ...options,
     });
 
     // Add dependencies

@@ -7,7 +7,9 @@ includes:
   infra:
     taskfile: ./infra/Taskfile.yml
     dir: ./infra
-  text-file-processor:
+  tfp:
+    aliases:
+      - text-file-processor
     taskfile: ./apps/text-file-processor/Taskfile.yml
     dir: ./apps/text-file-processor
 
@@ -60,16 +62,16 @@ tasks:
       - task: infra:deploy
     silent: true
 
-  dev:
+  dev:run:
     desc: Start development environment with LocalStack
     cmds:
       - task: localstack:deploy
       - echo "Development environment is ready!"
     silent: true
 
-  destroy:
+  dev:destroy:
     desc: Destroy development environment
     cmds:
-      - task: infra:destroy
+      # the whole infra will be destroyed as we're also deleting localstack volume
       - task: docker:down
     silent: true

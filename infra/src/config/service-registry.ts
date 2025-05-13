@@ -43,7 +43,7 @@ export const SERVICES: Record<ServiceKey, ServiceDefinition> = {
     ],
     apiEndpoints: [
       {
-        resourcePath: "files",
+        resourcePath: "text-files",
         methods: ["POST"],
         apiKeyRequired: true,
       },
