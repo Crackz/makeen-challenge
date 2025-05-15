@@ -1,0 +1,6 @@
+Special characters test file:
+!@#$%^&*()_+-={}[]|;:"'<>,.?/
+Unicode characters: ñáéíóúüÑÁÉÍÓÚÜ
+Emojis: 😀 🚀 📝 ✅ 🔥
+Tab character:	Tab
+End of special characters test file.

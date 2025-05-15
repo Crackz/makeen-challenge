@@ -1,249 +1,243 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import {
-  INestApplication,
-  BadRequestException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
-import request from 'supertest';
-import { join } from 'path';
+import axios, { AxiosError } from 'axios';
+import FormData from 'form-data';
 import * as fs from 'fs';
-import { TextFilesController } from '../src/modules/text-files/text-files.controller';
-import { TextFilesService } from '../src/modules/text-files/text-files.service';
-import { NestjsFormDataModule } from 'nestjs-form-data';
-import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter';
-import { DefaultValidationPipe } from '../src/common/pipes/default-validation.pipe';
+import { join } from 'path';
+import { DynamoDBHelper } from './utils/dynamodb-helper';
 
-describe('TextFiles API Tests', () => {
-  let app: INestApplication;
-  let textFilesService: TextFilesService;
+describe('TextFiles API E2E Tests with LocalStack', () => {
+  // LocalStack API endpoint
+  const LOCALSTACK_TEST_PORT = 4567;
+  const LOCALSTACK_API_BASE_URL = `http://makeen-challenge-api.execute-api.localhost.localstack.cloud:${LOCALSTACK_TEST_PORT}`;
+  const LOCALSTACK_API_KEY_VALUE = 'super-secret-dummy-api-key'; // This is the API key used in the test script
+  const TEXT_FILES_API_URL = `${LOCALSTACK_API_BASE_URL}/text-files`;
+  const TABLE_NAME = 'textFiles';
 
-  // Set required environment variables for testing
-  process.env.NODE_ENV = 'test';
+  // DynamoDB helper for verifying data
+  let dynamoDBHelper: DynamoDBHelper;
 
-  beforeAll(async () => {
-    // Create a test file
-    const testFilePath = join(__dirname, 'test-file.txt');
-    fs.writeFileSync(
-      testFilePath,
-      'This is a test file for integration testing.',
-    );
+  // Define search patterns for verifying content in DynamoDB
+  const SEARCH_PATTERNS = {
+    basic: 'sample test file for E2E testing',
+    specialChars: 'Special characters test file',
+    multiline: 'Line 1:',
+  };
 
-    // Mock the TextFilesService with more comprehensive handling
-    const mockTextFilesService = {
-      upload: jest.fn().mockImplementation((fileBuffer) => {
-        // Case 1: Empty file
-        if (!fileBuffer || fileBuffer.length === 0) {
-          throw new BadRequestException('File content is empty');
-        }
+  // Test file paths
+  const fixturesDir = join(__dirname, 'fixtures', 'text-files');
+  const filePaths = {
+    basic: join(fixturesDir, 'test-file.txt'),
+    binary: join(fixturesDir, 'binary-file.bin'),
+    large: join(fixturesDir, 'large-file.txt'),
+    specialChars: join(fixturesDir, 'special-chars-file.txt'),
+    multiline: join(fixturesDir, 'multiline-file.txt'),
+  };
 
-        // Case 2: Binary file (contains null bytes)
-        const content = fileBuffer.toString('utf-8');
-        if (content.includes('\0')) {
-          throw new UnprocessableEntityException('File must be a text file');
-        }
+  // Set up test environment
+  beforeAll(() => {
+    // Verify that all test files exist
+    Object.entries(filePaths).forEach(([key, filePath]) => {
+      if (!fs.existsSync(filePath)) {
+        throw new Error(
+          `Test file not found: ${filePath}. Please ensure all test fixtures are present.`,
+        );
+      }
+      console.log(`Using test file: ${key} at ${filePath}`);
+    });
 
-        // Case 3: File too large (simulate a 5MB limit)
-        if (fileBuffer.length > 5 * 1024 * 1024) {
-          throw new BadRequestException('File size exceeds the 5MB limit');
-        }
+    // Initialize DynamoDB helper
+    dynamoDBHelper = new DynamoDBHelper(TABLE_NAME);
 
-        // Case 4: Special error case for testing error handling
-        if (content.includes('TRIGGER_ERROR')) {
-          throw new Error('Internal server error triggered by test');
-        }
+    console.log('E2E test environment initialized');
+  }, 30000); // Increase timeout for LocalStack initialization
 
-        // Case 5: Success case with mock ID
-        return Promise.resolve({
-          id: 'test-id-' + Date.now(),
-          content,
-          timestamp: new Date().toISOString(),
-        });
-      }),
+  // Clean up DynamoDB after each test
+  afterEach(async () => {
+    // Delete all items from the DynamoDB table
+    const deletedCount = await dynamoDBHelper.deleteAllItems();
+    console.log(`Cleaned up ${deletedCount} items from DynamoDB after test`);
+    // Wait a moment to ensure deletion is complete
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }, 5000);
 
-      // Add a method to handle file validation
-      validateFile: jest.fn().mockImplementation((file) => {
-        if (!file) {
-          throw new BadRequestException('File is required');
-        }
-        return true;
-      }),
-    };
+  // Test successful file upload
+  it('should upload a text file successfully and store in DynamoDB', async () => {
+    const form = new FormData();
+    form.append('file', fs.createReadStream(filePaths.basic));
 
-    // Create a NestJS application with mocked service
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [NestjsFormDataModule],
-      controllers: [TextFilesController],
-      providers: [
-        {
-          provide: TextFilesService,
-          useValue: mockTextFilesService,
-        },
-      ],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    // Apply global exception filter for consistent error responses
-    app.useGlobalFilters(new AllExceptionsFilter());
-    app.useGlobalPipes(new DefaultValidationPipe());
-    textFilesService = moduleFixture.get<TextFilesService>(TextFilesService);
-    await app.init();
-
-    console.log('Test application initialized');
-  });
-
-  afterAll(async () => {
-    // Clean up test files
-    const testFilePath = join(__dirname, 'test-file.txt');
-    if (fs.existsSync(testFilePath)) {
-      fs.unlinkSync(testFilePath);
-    }
-
-    // Stop the application
-    await app.close();
-  });
-
-  it('should upload a text file successfully', async () => {
     // Upload a test file
-    await request(app.getHttpServer())
-      .post('/text-files')
-      .attach('file', join(__dirname, 'test-file.txt'))
-      .expect(204);
-
-    // Verify the service was called
-    expect(textFilesService.upload).toHaveBeenCalled();
-  });
-
-  it('should return 400 when uploading an empty file', async () => {
-    // Create an empty file
-    const emptyFilePath = join(__dirname, 'empty-file.txt');
-    fs.writeFileSync(emptyFilePath, '');
-
-    // Upload an empty file
-    await request(app.getHttpServer())
-      .post('/text-files')
-      .attach('file', emptyFilePath)
-      .expect(400); // Expecting HTTP 400 Bad Request
-
-    // Clean up empty file
-    if (fs.existsSync(emptyFilePath)) {
-      fs.unlinkSync(emptyFilePath);
-    }
-  });
-
-  it('should return 422 when uploading a binary file', async () => {
-    // Create a binary file
-    const binaryFilePath = join(__dirname, 'binary-file.bin');
-    const buffer = Buffer.from([0x00, 0x01, 0x02, 0x03]); // Binary content
-    fs.writeFileSync(binaryFilePath, buffer);
-
-    // Upload a binary file
-    const response = await request(app.getHttpServer())
-      .post('/text-files')
-      .attach('file', binaryFilePath)
-      .expect(422); // Expecting HTTP 422 Unprocessable Entity
-
-    // Clean up binary file
-    if (fs.existsSync(binaryFilePath)) {
-      fs.unlinkSync(binaryFilePath);
-    }
-
-    // Verify the error response
-    expect(response.body).toBeDefined();
-    expect(response.body.message).toBeDefined();
-  });
-
-  it('should return 400 when uploading a file that exceeds size limit', async () => {
-    // Create a large file (just over 5MB)
-    const largeFilePath = join(__dirname, 'large-file.txt');
-    // Create a smaller file for testing to avoid memory issues
-    // In a real scenario, we would mock the file size validation
-    const largeContent = 'A'.repeat(1024 * 10); // 10KB is enough to test the logic
-    fs.writeFileSync(largeFilePath, largeContent);
-
-    // Mock the service to throw the expected error for this specific file
-    (textFilesService.upload as jest.Mock).mockImplementationOnce(() => {
-      throw new BadRequestException('File size exceeds the 5MB limit');
+    const response = await axios.post(TEXT_FILES_API_URL, form, {
+      headers: {
+        ...form.getHeaders(),
+        'x-api-key': LOCALSTACK_API_KEY_VALUE,
+      },
     });
+    expect(response.status).toBe(204);
 
-    // Upload the large file
-    const response = await request(app.getHttpServer())
-      .post('/text-files')
-      .attach('file', largeFilePath)
-      .expect(400); // Expecting HTTP 400 Bad Request
+    // Wait a moment for DynamoDB write to complete
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    // Clean up large file
-    if (fs.existsSync(largeFilePath)) {
-      fs.unlinkSync(largeFilePath);
-    }
-
-    // Verify the error response
-    expect(response.body).toBeDefined();
-    expect(response.body.message).toBeDefined();
-  });
-
-  it('should return 500 when an internal server error occurs', async () => {
-    // Create a file that triggers an internal error
-    const errorFilePath = join(__dirname, 'error-file.txt');
-    fs.writeFileSync(
-      errorFilePath,
-      'This file contains TRIGGER_ERROR to cause a server error',
+    // Verify the file was stored in DynamoDB
+    const items = await dynamoDBHelper.findItemsByContent(
+      SEARCH_PATTERNS.basic,
     );
+    expect(items.length).toEqual(1);
 
-    // Upload the file that triggers an error
-    const response = await request(app.getHttpServer())
-      .post('/text-files')
-      .attach('file', errorFilePath)
-      .expect(500); // Expecting HTTP 500 Internal Server Error
+    // Verify content was stored correctly
+    const item = items[0];
+    expect(item).toBeDefined();
+    expect(item.content).toContain('This is a sample test file');
+    expect(item.id).toBeDefined();
+    expect(item.timestamp).toBeDefined();
+  }, 10000);
 
-    // Clean up error file
-    if (fs.existsSync(errorFilePath)) {
-      fs.unlinkSync(errorFilePath);
+  // Test upload without API key (should fail)
+  it('should reject requests without a valid API key', async () => {
+    const form = new FormData();
+    form.append('file', fs.createReadStream(filePaths.basic));
+
+    try {
+      // Attempt to upload without API key
+      await axios.post(TEXT_FILES_API_URL, form, {
+        headers: {
+          ...form.getHeaders(),
+          // No x-api-key header
+        },
+      });
+      fail('Expected request to fail due to missing API key');
+    } catch (error) {
+      const axiosError = error as AxiosError;
+      // The API returns 401 Unauthorized for missing API key
+      expect(axiosError.response?.status).toBe(401);
     }
+  }, 10000);
 
-    // Verify the error response
-    expect(response.body).toBeDefined();
-  });
+  // Test large file upload
+  it('should reject files that are too large', async () => {
+    const form = new FormData();
+    form.append('file', fs.createReadStream(filePaths.large));
 
-  it('should handle missing file in the request', async () => {
-    // When no file is attached, the controller throws an error that gets converted to 500
-    // This is expected behavior with the current implementation
+    try {
+      // Attempt to upload a large file
+      await axios.post(TEXT_FILES_API_URL, form, {
+        headers: {
+          ...form.getHeaders(),
+          'x-api-key': LOCALSTACK_API_KEY_VALUE,
+        },
+        // Increase timeout for large file
+        timeout: 30000,
+      });
+      fail('Expected request to fail due to file size limits');
+    } catch (error) {
+      const axiosError = error as AxiosError;
+      // The API returns 422 for files that are too large
+      expect(axiosError.response?.status).toBe(422);
+    }
+  }, 30000);
 
-    // Send a request without attaching a file
-    const response = await request(app.getHttpServer())
-      .post('/text-files')
-      .expect(422); // With the current implementation, this returns 500
+  // Test file with special characters
+  it('should handle files with special characters correctly', async () => {
+    const form = new FormData();
+    form.append('file', fs.createReadStream(filePaths.specialChars));
 
-    // Verify the error response
-    expect(response.body).toBeDefined();
-  });
-
-  it('should validate file mime type', async () => {
-    // Create a file with an unsupported mime type
-    const imagePath = join(__dirname, 'test-image.jpg');
-    // Create a small binary file that looks like an image
-    const imageContent = Buffer.from([
-      0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46,
-    ]); // JPEG header
-    fs.writeFileSync(imagePath, imageContent);
-
-    // Mock the service to throw an appropriate error for this test
-    (textFilesService.upload as jest.Mock).mockImplementationOnce(() => {
-      throw new UnprocessableEntityException('Only text files are allowed');
+    const response = await axios.post(TEXT_FILES_API_URL, form, {
+      headers: {
+        ...form.getHeaders(),
+        'x-api-key': LOCALSTACK_API_KEY_VALUE,
+      },
     });
+    expect(response.status).toBe(204);
 
-    // Upload the image file
-    const response = await request(app.getHttpServer())
-      .post('/text-files')
-      .attach('file', imagePath)
-      .expect(422); // Expecting HTTP 422 Unprocessable Entity
+    // Wait a moment for DynamoDB write to complete
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    // Clean up image file
-    if (fs.existsSync(imagePath)) {
-      fs.unlinkSync(imagePath);
-    }
+    // Verify the file with special characters was stored correctly
+    const items = await dynamoDBHelper.findItemsByContent(
+      SEARCH_PATTERNS.specialChars,
+    );
+    expect(items.length).toEqual(1);
+    const specialCharsItem = items[0];
+    expect(specialCharsItem).toBeDefined();
+    // Check for the presence of special characters in the content
+    expect(specialCharsItem.content).toContain('Special characters test file');
+    expect(specialCharsItem.content).toContain('!@#$%^&*()_+-={}[]|;');
+    expect(specialCharsItem.content).toContain("'");
+    expect(specialCharsItem.content).toContain('<>,.?/');
+  }, 10000);
 
-    // Verify the error response
-    expect(response.body).toBeDefined();
-    expect(response.body.message).toBeDefined();
-  });
+  // Test multiline file
+  it('should handle multiline files correctly', async () => {
+    const form = new FormData();
+    form.append('file', fs.createReadStream(filePaths.multiline));
+
+    const response = await axios.post(TEXT_FILES_API_URL, form, {
+      headers: {
+        ...form.getHeaders(),
+        'x-api-key': LOCALSTACK_API_KEY_VALUE,
+      },
+    });
+    expect(response.status).toBe(204);
+
+    // Wait a moment for DynamoDB write to complete
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    // Verify the multiline file was stored correctly
+    const items = await dynamoDBHelper.findItemsByContent(
+      SEARCH_PATTERNS.multiline,
+    );
+    expect(items.length).toEqual(1);
+    const multilineItem = items[0];
+    expect(multilineItem).toBeDefined();
+    expect(multilineItem.content).toContain('Line 1:');
+    expect(multilineItem.content).toContain('Line 2:');
+    expect(multilineItem.content).toContain('Line 3:');
+    expect(multilineItem.content.split('\n').length).toBeGreaterThanOrEqual(3);
+  }, 10000);
+
+  // Test concurrent file uploads
+  it('should handle concurrent file uploads correctly', async () => {
+    // Create multiple form data objects
+    const form1 = new FormData();
+    form1.append('file', fs.createReadStream(filePaths.basic));
+    const form2 = new FormData();
+    form2.append('file', fs.createReadStream(filePaths.multiline));
+    const form3 = new FormData();
+    form3.append('file', fs.createReadStream(filePaths.specialChars));
+
+    // Upload multiple files concurrently
+    const [response1, response2, response3] = await Promise.all([
+      axios.post(TEXT_FILES_API_URL, form1, {
+        headers: {
+          ...form1.getHeaders(),
+          'x-api-key': LOCALSTACK_API_KEY_VALUE,
+        },
+      }),
+      axios.post(TEXT_FILES_API_URL, form2, {
+        headers: {
+          ...form2.getHeaders(),
+          'x-api-key': LOCALSTACK_API_KEY_VALUE,
+        },
+      }),
+      axios.post(TEXT_FILES_API_URL, form3, {
+        headers: {
+          ...form3.getHeaders(),
+          'x-api-key': LOCALSTACK_API_KEY_VALUE,
+        },
+      }),
+    ]);
+
+    // Verify all responses are successful
+    expect(response1.status).toBe(204);
+    expect(response2.status).toBe(204);
+    expect(response3.status).toBe(204);
+
+    // Wait a moment for DynamoDB writes to complete
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    // Verify all files were stored correctly
+    // Get all items and check that we have at least 3 items
+    const allItems = await dynamoDBHelper.scanAllItems();
+    expect(allItems.length).toBeGreaterThanOrEqual(3); // At least 3 items from our concurrent uploads
+  }, 15000);
+
+  // TODO: Handle more edge case like empty files, more files with different magic numbers
 });
