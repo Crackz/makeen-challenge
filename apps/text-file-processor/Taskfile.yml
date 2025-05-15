@@ -1,0 +1,35 @@
+version: "3"
+
+tasks:
+  build:
+    desc: Build the app using webpack
+    cmd: npm run build
+    silent: true
+
+  resource:create:
+    desc: Create a new resource
+    cmds:
+      - nest generate resource
+    silent: true
+
+  test:run:
+    desc: Run unit tests
+    cmds:
+      - npm run test
+    silent: true
+
+  test:e2e:run:
+    desc: Run end-to-end tests with LocalStack
+    cmds:
+      - npm run test:e2e
+    silent: true
+
+  dev:run:
+    desc: Run the app in development mode
+    env:
+      NODE_ENV: development
+      TEXT_FILES_TABLE_NAME: textFiles
+    cmds:
+      - echo "INFO Watching for changes in the app..."
+      - npm run start:dev
+    silent: true

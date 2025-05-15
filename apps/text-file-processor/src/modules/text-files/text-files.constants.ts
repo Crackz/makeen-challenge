@@ -1,0 +1,1 @@
+export const TEXT_FILES_MODEL_NAME = 'TEXT_FILES';
