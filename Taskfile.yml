@@ -12,66 +12,96 @@ includes:
       - text-file-processor
     taskfile: ./apps/text-file-processor/Taskfile.yml
     dir: ./apps/text-file-processor
+  auth:
+    taskfile: ./apps/authorizers/api-key-authorizer/Taskfile.yml
+    dir: ./apps/authorizers/api-key-authorizer
 
 tasks:
-  docker:up:
-    desc: Start Docker Compose services
-    cmd: docker-compose up -d
-    silent: true
-
-  docker:down:
-    desc: Down Docker Compose services
-    cmd: docker-compose down -v
-    silent: true
-
-  docker:stop:
-    desc: Stop Docker Compose services
-    cmd: docker-compose stop
-    silent: true
-
-  docker:restart:
-    desc: Restart Docker Compose services
-    cmd: docker-compose restart
-    silent: true
-
-  docker:logs:
+  localstack:log:
     desc: View LocalStack container logs
-    cmd: docker compose logs -f localstack
-    silent: true
+    cmd: docker-compose -f docker-compose.dev.yml logs -f localstack
 
-  localstack:wait:
-    desc: Wait for LocalStack to be ready
-    cmds:
-      - |
-        echo "Waiting for LocalStack to be ready..."
-        until curl -s http://localhost:4566/_localstack/health | grep -q '{'; do
-          echo "LocalStack not ready yet, waiting..."
-          sleep 3
-        done
-        echo "LocalStack is ready!"
-    silent: true
+  infra:log:
+    desc: View infra container logs
+    cmd: docker-compose -f docker-compose.dev.yml logs -f infra
+
+  dev:build:
+    desc: Build all services
+    deps:
+      - infra:build
+      - tfp:build
+      - auth:build
     internal: true
 
-  localstack:deploy:
-    desc: Deploy all resources to LocalStack
-    cmds:
-      - task: docker:up
-      - task: localstack:wait
-      - task: infra:build
-      - task: infra:bootstrap
-      - task: infra:deploy
-    silent: true
-
   dev:run:
-    desc: Start development environment with LocalStack
+    desc: Start the development environment
+    aliases:
+      - run
+    deps:
+      - infra:build
     cmds:
-      - task: localstack:deploy
-      - echo "Development environment is ready!"
-    silent: true
+      - docker-compose -f docker-compose.dev.yml up -d --build
+      - task: wait-for-infra
+      - task: tfp:dev:run
+
+  wait-for-infra:
+    desc: Waits for the 'infra' service container to complete deployment and exit successfully.
+    internal: true
+    cmds:
+      - |
+        echo "INFO: Waiting for 'infra' container to disappear (complete its run)..."
+        MAX_ATTEMPTS=36 # Approx 3 minutes (36 * 5s)
+        ATTEMPT_NUM=1
+        INFRA_SERVICE_NAME="infra"
+
+        while [ "$ATTEMPT_NUM" -le "$MAX_ATTEMPTS" ]; do
+          # Check if the infra container is listed by docker-compose ps -q
+          # If it's empty, the container is gone.
+          INFRA_CONTAINER_PRESENCE=$(docker-compose -f docker-compose.dev.yml ps -q $INFRA_SERVICE_NAME)
+
+          if [ -z "$INFRA_CONTAINER_PRESENCE" ]; then
+            echo "INFO: 'infra' container has disappeared. Assuming successful completion."
+            exit 0
+          else
+            echo "INFO: Attempt $ATTEMPT_NUM/$MAX_ATTEMPTS: 'infra' container (ID(s): $INFRA_CONTAINER_PRESENCE) is still present. Waiting for it to disappear. Retrying in 5s..."
+          fi
+          sleep 5
+          ATTEMPT_NUM=$((ATTEMPT_NUM + 1))
+        done
+
+        echo "ERROR: Timeout waiting for 'infra' container to disappear after $MAX_ATTEMPTS attempts."
+        INFRA_CONTAINER_FINAL_CHECK=$(docker-compose -f docker-compose.dev.yml ps -q $INFRA_SERVICE_NAME)
+        if [ ! -z "$INFRA_CONTAINER_FINAL_CHECK" ]; then
+          echo "INFO: 'infra' container (ID(s): $INFRA_CONTAINER_FINAL_CHECK) was still present at timeout."
+          echo "INFO: Dumping logs for diagnostics (note: this might be for a new instance if previous one exited and compose tried to restart, though restart policy was removed):"
+          # Iterate over potentially multiple IDs if service scales (though not expected for 'infra')
+          for id in $INFRA_CONTAINER_FINAL_CHECK; do
+            echo "--- Logs for container $id ---"
+            docker logs "$id" 2>/dev/null || echo "Failed to retrieve logs for $id."
+          done
+        else
+          echo "INFO: 'infra' container was not found during final check either (this is unexpected if timeout occurred due to presence)."
+        fi
+        exit 1
 
   dev:destroy:
-    desc: Destroy development environment
+    desc: |
+      Destroy development environment
+      Note: the whole infra will be destroyed as we're also deleting localstack volume
+    aliases:
+      - destroy
     cmds:
-      # the whole infra will be destroyed as we're also deleting localstack volume
-      - task: docker:down
-    silent: true
+      - docker-compose -f docker-compose.dev.yml down -v
+
+  test:e2e:run:
+    desc: Run end-to-end tests with LocalStack
+    cmds:
+      - docker-compose -f docker-compose.testing.yml up -d
+      - task: tfp:test:e2e:run
+
+  test:e2e:destroy:
+    desc: Destroy testing environment
+    aliases:
+      - test:destroy
+    cmds:
+      - docker-compose -f docker-compose.testing.yml down -v
