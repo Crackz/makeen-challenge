@@ -1,7 +1,10 @@
 {
     "cSpell.words": [
+        "Dynamoose",
+        "ENVAR",
         "LOCALSTACK",
         "Makeen",
         "Taskfile"
-    ]
+    ],
+    "typescript.tsdk": "node_modules/typescript/lib"
 }

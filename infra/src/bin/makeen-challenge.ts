@@ -2,6 +2,7 @@
 import "source-map-support/register";
 import * as cdk from "aws-cdk-lib";
 import { MakeenChallengeApp } from "../app";
+import { EnvironmentName } from "../config/environment-config";
 
 const app = new cdk.App();
 
@@ -37,7 +38,7 @@ const getEnvFromContext = (app: cdk.App): cdk.Environment => {
 };
 
 // Determine the stage from environment variable, default to 'dev'
-const stage = process.env.STAGE || "dev"; // Use STAGE env var, default to 'dev'
+const stage = (process.env.STAGE as EnvironmentName) || "dev"; // Use STAGE env var, default to 'dev'
 
 // Create the application with the specified environment and stage
 new MakeenChallengeApp(app, {

@@ -2,9 +2,12 @@
 import * as cdk from "aws-cdk-lib";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as s3 from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 import * as path from "path";
+import { EnvironmentName } from "../config/environment-config";
 
 // Define table permission types
 export enum TableAccessType {
@@ -36,6 +39,7 @@ export interface ServiceConfig {
 interface LambdaStackProps extends cdk.StackProps {
   tables: Record<string, dynamodb.Table>; // Map of table logical names to actual DynamoDB tables
   service: ServiceConfig;
+  stageName: EnvironmentName;
 }
 
 export class LambdaStack extends cdk.Stack {
@@ -43,7 +47,8 @@ export class LambdaStack extends cdk.Stack {
 
   constructor(scope: Construct, id: string, props: LambdaStackProps) {
     super(scope, id, props);
-
+    // Determine if we're using LocalStack
+    const isLocalDev = props.stageName === "dev";
     const serviceConfig = props.service;
 
     // Create a log group for the Lambda function
@@ -52,16 +57,9 @@ export class LambdaStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    // Determine if we're using LocalStack
-    const isLocalStack = this.node.tryGetContext("use-local") === true;
-
-    // Create the Lambda function
-    const projectRoot = path.resolve(__dirname, "../../../..");
-    const functionPath = path.join(projectRoot, serviceConfig.path);
-
     // Merge default environment with service-specific environment
     const environment: Record<string, string> = {
-      NODE_ENV: isLocalStack ? "development" : "production",
+      NODE_ENV: isLocalDev ? "development" : "production",
       ...serviceConfig.environment,
     };
 
@@ -72,48 +70,40 @@ export class LambdaStack extends cdk.Stack {
           table.tableName;
       });
     }
-
-    // Configure Lambda function properties based on environment
+    // Set up Lambda code source based on environment
     let lambdaCode: lambda.Code;
-    let lambdaProps: lambda.FunctionProps;
 
-    if (isLocalStack) {
-      // For LocalStack, use special configuration for hot reloading
+    if (isLocalDev) {
+      // For LocalStack, use the special hot-reload bucket for automatic reloading
       console.log(
-        `Setting up hot reloading for ${serviceConfig.name} Lambda function`
+        "LocalStack environment detected, setting up hot-reload for Lambda"
       );
 
-      // Extract the service name from the path for the mounted volume
-      const serviceName = serviceConfig.path.split("/").slice(-2)[0];
+      const hotReloadBucket = s3.Bucket.fromBucketName(
+        this,
+        "HotReloadBucket",
+        "hot-reload"
+      );
+      const projectRoot = process.env.ROOT_FOLDER_PATH;
+      if (!projectRoot) {
+        throw new Error("ROOT_FOLDER_PATH environment variable is not set");
+      }
+      const functionPath = path.join(projectRoot, serviceConfig.path);
 
-      // Use Code.fromInline for LocalStack with hot reloading
-      lambdaCode = lambda.Code.fromInline(`
-        // This is a placeholder. The actual code will be mounted from the host
-        exports.handler = async (event) => {
-          return { statusCode: 200, body: 'Lambda hot reloading placeholder' };
-        };
-      `);
-
-      lambdaProps = {
-        code: lambdaCode,
-        runtime: serviceConfig.runtime,
-        handler: serviceConfig.handler,
-        environment: {
-          ...environment,
-          // Add environment variable to indicate we're using hot reloading
-          LAMBDA_HOT_RELOADING: "true",
-          // Special environment variable for LocalStack to locate the mounted code
-          LAMBDA_MOUNT_PATH: `/var/task/${serviceName}`,
-        },
-        timeout: serviceConfig.timeout || cdk.Duration.seconds(60),
-        memorySize: serviceConfig.memorySize || 1024,
-        logGroup,
-      };
+      lambdaCode = lambda.Code.fromBucket(hotReloadBucket, functionPath);
     } else {
-      // For production, use standard configuration
-      lambdaCode = lambda.Code.fromAsset(functionPath);
+      const projectRoot = path.resolve(__dirname, "../../../..");
+      const functionPath = path.join(projectRoot, serviceConfig.path);
 
-      lambdaProps = {
+      // For AWS, use the standard asset approach
+      lambdaCode = lambda.Code.fromAsset(functionPath);
+    }
+
+    // Create the Lambda function with the pre-built code
+    this.lambdaFunction = new lambda.Function(
+      this,
+      `${serviceConfig.name}Function`,
+      {
         code: lambdaCode,
         runtime: serviceConfig.runtime,
         handler: serviceConfig.handler,
@@ -122,15 +112,8 @@ export class LambdaStack extends cdk.Stack {
         memorySize: serviceConfig.memorySize || 1024,
         logGroup,
         tracing: lambda.Tracing.ACTIVE, // Enable X-Ray tracing for production monitoring
-        retryAttempts: 2, // Add retry capability for resilience
-      };
-    }
-
-    // Create the Lambda function
-    this.lambdaFunction = new lambda.Function(
-      this,
-      `${serviceConfig.name}Function`,
-      lambdaProps
+        retryAttempts: 2, // Add retry capability for resilience,
+      }
     );
 
     // Grant table access based on configuration

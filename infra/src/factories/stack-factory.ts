@@ -1,23 +1,22 @@
 import * as cdk from "aws-cdk-lib";
-import { Construct } from "constructs";
+import {
+  EnvironmentName,
+  getEnvironmentConfig,
+} from "../config/environment-config";
+import { getService, ServiceKey } from "../config/service-registry";
+import { ApiEndpointConfig, ApiStack } from "../stacks/api-stack";
 import { DatabaseStack } from "../stacks/database-stack";
 import { LambdaStack } from "../stacks/lambda-stack";
-import { ApiStack, ApiEndpointConfig } from "../stacks/api-stack";
 import {
-  MonitoringStack,
   MonitoringResourceConfig,
+  MonitoringStack,
 } from "../stacks/monitoring-stack";
-import { getEnvironmentConfig } from "../config/environment-config";
-import {
-  getService,
-  ServiceDefinition,
-  ServiceKey,
-} from "../config/service-registry";
+import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 
 export interface StackFactoryProps {
   app: cdk.App;
   env: cdk.Environment;
-  stageName: string;
+  stageName: EnvironmentName;
 }
 
 /**
@@ -26,7 +25,7 @@ export interface StackFactoryProps {
 export class StackFactory {
   private readonly app: cdk.App;
   private readonly env: cdk.Environment;
-  private readonly stageName: string;
+  private readonly stageName: EnvironmentName;
   private readonly stackNamePrefix: string;
   private readonly envConfig: ReturnType<typeof getEnvironmentConfig>;
   private readonly stacks: Record<string, cdk.Stack> = {};
@@ -100,6 +99,7 @@ export class StackFactory {
       {
         env: this.env,
         description: `Makeen Challenge ${stackId} Lambda Stack - ${this.stageName}`,
+        stageName: this.stageName,
         stackName: `${this.stackNamePrefix}-${stackId}`,
         tables: dependencies.databaseStack.getTables(),
         service: serviceConfig,
@@ -108,7 +108,6 @@ export class StackFactory {
       }
     );
 
-    // Add dependencies
     stack.addDependency(dependencies.databaseStack);
 
     this.stacks[stackId] = stack;
@@ -140,20 +139,23 @@ export class StackFactory {
       throw new Error("API key value should be at least 20 characters long");
     }
 
-    // Collect API endpoints from all services
+    // Collect API endpoints from all Lambda stacks
     const apiEndpoints: ApiEndpointConfig[] = [];
 
+    // Add API endpoints from all services
     Object.entries(dependencies.lambdaStacks).forEach(
       ([serviceKey, lambdaStack]) => {
         const serviceDefinition = getService(serviceKey as ServiceKey);
 
         if (serviceDefinition.apiEndpoints) {
+          // Map service registry endpoints to API stack endpoints
           serviceDefinition.apiEndpoints.forEach((endpoint) => {
             apiEndpoints.push({
               lambdaFunction: lambdaStack.lambdaFunction,
               resourcePath: endpoint.resourcePath,
               methods: endpoint.methods,
               apiKeyRequired: endpoint.apiKeyRequired,
+              binaryMediaTypes: endpoint.binaryMediaTypes,
             });
           });
         }
@@ -239,7 +241,7 @@ export class StackFactory {
     // Add DynamoDB monitoring
     monitoringResources.push({
       type: "dynamodb",
-      resource: dependencies.databaseStack.fileDataTable,
+      resource: dependencies.databaseStack.textfileTable,
       name: "FileDataTable",
       alarmThresholds: {
         throttles:

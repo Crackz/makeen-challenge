@@ -1,12 +1,14 @@
 import * as cdk from "aws-cdk-lib";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
+import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import { Construct } from "constructs";
+import { EnvironmentName } from "../config/environment-config";
 
 export interface MonitoringResourceConfig {
   type: "api" | "lambda" | "dynamodb";
-  resource: apigateway.RestApi | lambda.Function | cdk.aws_dynamodb.Table;
+  resource: apigwv2.HttpApi | lambda.Function | cdk.aws_dynamodb.Table;
   name: string;
   alarmThresholds?: {
     errors?: number;
@@ -17,7 +19,7 @@ export interface MonitoringResourceConfig {
 
 interface MonitoringStackProps extends cdk.StackProps {
   resources: MonitoringResourceConfig[];
-  stageName: string;
+  stageName: EnvironmentName;
   alarmEmailSubscription?: string;
 }
 
@@ -35,7 +37,7 @@ export class MonitoringStack extends cdk.Stack {
         case "api":
           resourceAlarms.push(
             ...this.createApiAlarms(
-              resourceConfig.resource as apigateway.RestApi,
+              resourceConfig.resource as apigwv2.HttpApi,
               resourceConfig.name,
               props.stageName,
               resourceConfig.alarmThresholds
@@ -75,9 +77,9 @@ export class MonitoringStack extends cdk.Stack {
   }
 
   private createApiAlarms(
-    api: apigateway.RestApi,
+    api: apigwv2.HttpApi,
     name: string,
-    stageName: string,
+    stageName: EnvironmentName,
     thresholds?: { errors?: number; latency?: number; throttles?: number }
   ): cloudwatch.Alarm[] {
     const alarms: cloudwatch.Alarm[] = [];
@@ -87,7 +89,7 @@ export class MonitoringStack extends cdk.Stack {
       namespace: "AWS/ApiGateway",
       metricName: "5XXError",
       dimensionsMap: {
-        ApiName: api.restApiName,
+        ApiId: api.apiId,
         Stage: stageName,
       },
       statistic: "Sum",
@@ -109,7 +111,7 @@ export class MonitoringStack extends cdk.Stack {
       namespace: "AWS/ApiGateway",
       metricName: "Latency",
       dimensionsMap: {
-        ApiName: api.restApiName,
+        ApiId: api.apiId,
         Stage: stageName,
       },
       statistic: "p90",
@@ -123,7 +125,8 @@ export class MonitoringStack extends cdk.Stack {
         evaluationPeriods: 3,
         alarmDescription: `${name} API has high latency`,
         treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        comparisonOperator:
+          cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
       })
     );
 
@@ -172,11 +175,16 @@ export class MonitoringStack extends cdk.Stack {
     alarms.push(
       new cloudwatch.Alarm(this, `${name}LambdaDurationAlarm`, {
         metric: lambdaDuration,
-        threshold: thresholds?.latency || (lambdaFunction.timeout ? lambdaFunction.timeout.toMilliseconds() * 0.8 : 3000), // 80% of timeout
+        threshold:
+          thresholds?.latency ||
+          (lambdaFunction.timeout
+            ? lambdaFunction.timeout.toMilliseconds() * 0.8
+            : 3000), // 80% of timeout
         evaluationPeriods: 3,
         alarmDescription: `${name} Lambda function duration is high`,
         treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        comparisonOperator:
+          cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
       })
     );
 
@@ -237,25 +245,23 @@ export class MonitoringStack extends cdk.Stack {
 
   private createDashboard(
     resources: MonitoringResourceConfig[],
-    stageName: string
+    stageName: EnvironmentName
   ): void {
-    const dashboard = new cloudwatch.Dashboard(
-      this,
-      `${stageName}Dashboard`,
-      {
-        dashboardName: `MakeenChallenge-${stageName}`,
-      }
-    );
+    // Create a dashboard for all resources
+    const dashboard = new cloudwatch.Dashboard(this, "Dashboard", {
+      dashboardName: `MakeenChallenge-${stageName}-Dashboard`,
+    });
 
-    // Add widgets for each resource
+    // Create an array to collect all widgets
     const widgets: cloudwatch.IWidget[] = [];
 
+    // Add widgets for each resource
     resources.forEach((resourceConfig) => {
       switch (resourceConfig.type) {
         case "api":
           widgets.push(
             this.createApiWidgets(
-              resourceConfig.resource as apigateway.RestApi,
+              resourceConfig.resource as apigwv2.HttpApi,
               resourceConfig.name,
               stageName
             )
@@ -284,9 +290,9 @@ export class MonitoringStack extends cdk.Stack {
   }
 
   private createApiWidgets(
-    api: apigateway.RestApi,
+    api: apigwv2.HttpApi,
     name: string,
-    stageName: string
+    stageName: EnvironmentName
   ): cloudwatch.IWidget {
     return new cloudwatch.GraphWidget({
       title: `${name} API Metrics`,
@@ -295,7 +301,7 @@ export class MonitoringStack extends cdk.Stack {
           namespace: "AWS/ApiGateway",
           metricName: "Count",
           dimensionsMap: {
-            ApiName: api.restApiName,
+            ApiId: api.apiId,
             Stage: stageName,
           },
           statistic: "Sum",
@@ -305,7 +311,7 @@ export class MonitoringStack extends cdk.Stack {
           namespace: "AWS/ApiGateway",
           metricName: "4XXError",
           dimensionsMap: {
-            ApiName: api.restApiName,
+            ApiId: api.apiId,
             Stage: stageName,
           },
           statistic: "Sum",
@@ -315,7 +321,7 @@ export class MonitoringStack extends cdk.Stack {
           namespace: "AWS/ApiGateway",
           metricName: "5XXError",
           dimensionsMap: {
-            ApiName: api.restApiName,
+            ApiId: api.apiId,
             Stage: stageName,
           },
           statistic: "Sum",
@@ -327,7 +333,7 @@ export class MonitoringStack extends cdk.Stack {
           namespace: "AWS/ApiGateway",
           metricName: "Latency",
           dimensionsMap: {
-            ApiName: api.restApiName,
+            ApiId: api.apiId,
             Stage: stageName,
           },
           statistic: "p50",
@@ -337,7 +343,7 @@ export class MonitoringStack extends cdk.Stack {
           namespace: "AWS/ApiGateway",
           metricName: "Latency",
           dimensionsMap: {
-            ApiName: api.restApiName,
+            ApiId: api.apiId,
             Stage: stageName,
           },
           statistic: "p90",
@@ -347,7 +353,7 @@ export class MonitoringStack extends cdk.Stack {
           namespace: "AWS/ApiGateway",
           metricName: "Latency",
           dimensionsMap: {
-            ApiName: api.restApiName,
+            ApiId: api.apiId,
             Stage: stageName,
           },
           statistic: "p99",
@@ -496,7 +502,9 @@ export class MonitoringStack extends cdk.Stack {
     // Add all alarms to the topic
     Object.values(this.alarms).forEach((alarmArray) => {
       alarmArray.forEach((alarm) => {
-        alarm.addAlarmAction(new cdk.aws_cloudwatch_actions.SnsAction(alarmTopic));
+        alarm.addAlarmAction(
+          new cdk.aws_cloudwatch_actions.SnsAction(alarmTopic)
+        );
       });
     });
   }

@@ -1,21 +1,22 @@
 import * as cdk from "aws-cdk-lib";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import { Construct } from "constructs";
+import { EnvironmentName } from "../config/environment-config";
 
 // Define table logical names as constants to ensure consistency
 export const TABLE_NAMES = {
-  FILE_DATA: "fileData",
+  TEXT_FILES: "textFiles",
 } as const;
 
 export type TableName = keyof typeof TABLE_NAMES;
 
 // Define props for the DatabaseStack, extending cdk.StackProps
 export interface DatabaseStackProps extends cdk.StackProps {
-  stageName: string;
+  stageName: EnvironmentName;
 }
 
 export class DatabaseStack extends cdk.Stack {
-  public readonly fileDataTable: dynamodb.Table;
+  public readonly textfileTable: dynamodb.Table;
   private readonly tableMap: Record<string, dynamodb.Table> = {};
 
   constructor(scope: Construct, id: string, props: DatabaseStackProps) {
@@ -32,9 +33,10 @@ export class DatabaseStack extends cdk.Stack {
       : dynamodb.TableEncryption.AWS_MANAGED;
 
     // Create a DynamoDB table for storing processed file data
-    this.fileDataTable = new dynamodb.Table(this, "FileDataTable", {
+    this.textfileTable = new dynamodb.Table(this, "FileDataTable", {
       partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "timestamp", type: dynamodb.AttributeType.STRING },
+      tableName: TABLE_NAMES.TEXT_FILES,
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand capacity for cost efficiency
       // !Note: localstack has issues with encryption setting, it keeps throwing "table is already exist"
       encryption,
@@ -43,7 +45,7 @@ export class DatabaseStack extends cdk.Stack {
     });
 
     // Store tables in the map for easy access
-    this.tableMap[TABLE_NAMES.FILE_DATA] = this.fileDataTable;
+    this.tableMap[TABLE_NAMES.TEXT_FILES] = this.textfileTable;
   }
 
   /**

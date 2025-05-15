@@ -1,12 +1,12 @@
 import * as cdk from "aws-cdk-lib";
-import { Construct } from "constructs";
+import { ServiceKey } from "./config/service-registry";
 import { StackFactory } from "./factories/stack-factory";
 import { LambdaStack } from "./stacks/lambda-stack";
-import { ServiceKey } from "./config/service-registry";
+import { EnvironmentName } from "./config/environment-config";
 
 export interface MakeenChallengeAppProps {
   env: cdk.Environment;
-  stageName: string;
+  stageName: EnvironmentName;
 }
 
 export class MakeenChallengeApp {

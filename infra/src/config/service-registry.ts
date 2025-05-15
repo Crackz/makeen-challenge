@@ -1,5 +1,6 @@
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as cdk from "aws-cdk-lib";
+import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import { TableAccessType } from "../stacks/lambda-stack";
 import { TABLE_NAMES } from "../stacks/database-stack";
 
@@ -22,8 +23,9 @@ export interface ServiceDefinition {
   }[];
   apiEndpoints?: {
     resourcePath: string;
-    methods: string[];
+    methods: apigwv2.HttpMethod[];
     apiKeyRequired?: boolean;
+    binaryMediaTypes?: string[];
   }[];
 }
 
@@ -37,17 +39,21 @@ export const SERVICES: Record<ServiceKey, ServiceDefinition> = {
     runtime: lambda.Runtime.NODEJS_22_X,
     tableAccess: [
       {
-        tableName: TABLE_NAMES.FILE_DATA,
+        tableName: TABLE_NAMES.TEXT_FILES,
         accessType: TableAccessType.WRITE,
       },
     ],
     apiEndpoints: [
       {
         resourcePath: "text-files",
-        methods: ["POST"],
+        methods: [apigwv2.HttpMethod.POST],
         apiKeyRequired: true,
+        binaryMediaTypes: ["multipart/form-data"],
       },
     ],
+    environment: {
+      TEXT_FILES_TABLE_NAME: TABLE_NAMES.TEXT_FILES,
+    },
   },
 };
 
