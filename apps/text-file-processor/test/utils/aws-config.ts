@@ -13,9 +13,9 @@ export function createDynamoDBClient() {
   // Create the base DynamoDB client with LocalStack configuration
   const client = new DynamoDBClient({
     endpoint: DYNAMODB_ENDPOINT,
-    region: 'eu-central-1', // LocalStack default region
+    region: 'us-east-1', // LocalStack default region
     credentials: {
-      accessKeyId: '000000000000',
+      accessKeyId: 'test',
       secretAccessKey: 'test',
     },
   });

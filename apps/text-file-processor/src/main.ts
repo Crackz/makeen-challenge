@@ -6,6 +6,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { DefaultValidationPipe } from './common/pipes/default-validation.pipe';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { Logger } from '@nestjs/common';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
 let cachedServer: Handler;
 
@@ -15,6 +16,18 @@ async function bootstrap(): Promise<Handler> {
 
   app.useGlobalPipes(new DefaultValidationPipe());
   app.useGlobalFilters(new AllExceptionsFilter());
+
+  // Setup Swagger documentation
+  const config = new DocumentBuilder()
+    .setTitle('Text File Processor API')
+    .setDescription('API for processing and storing text files')
+    .setVersion('1.0')
+    .addApiKey({ type: 'apiKey', name: 'x-api-key', in: 'header' }, 'x-api-key')
+    .addTag('text-files', 'Operations related to text file processing')
+    .build();
+
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/docs', app, document);
 
   await app.init();
 
