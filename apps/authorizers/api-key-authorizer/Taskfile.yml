@@ -1,0 +1,7 @@
+version: "3"
+
+tasks:
+  build:
+    desc: Build the app
+    cmd: npm run build
+    silent: true
