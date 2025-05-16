@@ -5,14 +5,15 @@ import { MakeenChallengeApp } from "../app";
 import { EnvironmentName } from "../config/environment-config";
 
 const app = new cdk.App();
+// Determine the stage from environment variable, default to 'dev'
+const stage = (process.env.STAGE as EnvironmentName) || "dev"; // Use STAGE env var, default to 'dev'
 
 // Get environment from context or use defaults
 const getEnvFromContext = (app: cdk.App): cdk.Environment => {
   // Check if we're using LocalStack
-  const useLocal = app.node.tryGetContext("use-local") === true;
+  const isLocalDev = stage === "dev";
 
-  if (useLocal) {
-    console.log("Using LocalStack for deployment");
+  if (isLocalDev) {
     return {
       account: process.env.CDK_DEFAULT_ACCOUNT || "000000000000",
       region: process.env.CDK_DEFAULT_REGION || "eu-central-1",
@@ -36,9 +37,6 @@ const getEnvFromContext = (app: cdk.App): cdk.Environment => {
 
   return { account, region };
 };
-
-// Determine the stage from environment variable, default to 'dev'
-const stage = (process.env.STAGE as EnvironmentName) || "dev"; // Use STAGE env var, default to 'dev'
 
 // Create the application with the specified environment and stage
 new MakeenChallengeApp(app, {
