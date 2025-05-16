@@ -108,3 +108,7 @@ The current implementation spin up a single localstack instance for all tests, w
 
 - You would find comments across the codebase that explain how we could improve it (they have 'TODO' prefix)
 - Most of the tests are created by AI, I reviewed them to make sure they cover most of the cases.
+
+##### API Documentation
+
+I didn't add it to save time, however you could check any of my public repos to see how I document my APIs [here](https://github.com/Crackz)
