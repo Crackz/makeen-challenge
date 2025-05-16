@@ -1,7 +1,25 @@
+# Makeen Challenge
+
+## Table of Contents
+
+- [Test API (tl;dr)](#test-api-tldr)
+- [Architecture](#architecture)
+- [Setup](#setup)
+  - [Initial setup](#initial-setup)
+  - [Run and destroy the development environment](#run-and-destroy-the-development-environment)
+  - [Check the Services Logs](#check-the-services-logs)
+  - [Run the tests](#run-the-tests)
+- [Deployment](#deployment)
+- [Misc](#misc)
+  - [Scalable solution](#scalable-solution)
+  - [Better e2e tests](#better-e2e-tests)
+  - [Code quality](#code-quality)
+  - [API Documentation](#api-documentation)
+
 ## Test API (tl;dr)
 
 - Install taskfile `npm install -g @go-task/cli`
-- Run `task run`
+- Run `npm install && task run`
 - Test the API:
 
 ```bash
@@ -18,7 +36,7 @@
 
 ## Setup
 
-#### Run once
+#### Initial setup
 
 - Install LTS versions of Node.js, Docker, and Docker Compose.
 
