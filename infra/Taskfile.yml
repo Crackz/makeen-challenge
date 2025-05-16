@@ -5,3 +5,9 @@ tasks:
     desc: Build CDK stacks
     cmd: npm run build
     silent: true
+
+  test:run:
+    desc: Run unit tests
+    cmds:
+      - npm run test
+    silent: true
